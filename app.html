@@ -514,14 +514,10 @@ async function sendMessage() {
 - لا تذكر أنك Gemini أو من صنعك`;
 
   // بناء المحادثة بصيغة Gemini
-  const geminiContents = [
-    { role: 'user', parts: [{ text: systemPrompt + '\n\nابدأ المحادثة.' }] },
-    { role: 'model', parts: [{ text: 'أهلاً! أنا مساعدك الدراسي. كيف أقدر أساعدك اليوم؟' }] },
-    ...history.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }))
-  ];
+  const geminiContents = history.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }]
+  }));
 
   try {
     const response = await fetch(
@@ -530,6 +526,7 @@ async function sendMessage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: geminiContents,
           generationConfig: { maxOutputTokens: 1024, temperature: 0.7 }
         })
@@ -539,19 +536,25 @@ async function sendMessage() {
     const data = await response.json();
     removeTyping();
 
+    // إذا في خطأ من Gemini نبيّنه بوضوح
+    if (data.error) {
+      throw new Error('Gemini: ' + data.error.message);
+    }
+
     const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (reply) {
       history.push({ role: 'assistant', content: reply });
       addMessage('bot', reply);
     } else {
-      throw new Error('No response');
+      throw new Error('لا يوجد رد من Gemini');
     }
   } catch (err) {
     removeTyping();
     const chat = document.getElementById('chat');
     const errDiv = document.createElement('div');
     errDiv.className = 'error-bubble';
-    errDiv.textContent = 'حدث خطأ في الاتصال. تأكد من مفتاح Gemini وحاول مرة أخرى.';
+    // نبيّن الخطأ الحقيقي للمساعدة في التشخيص
+    errDiv.textContent = 'خطأ: ' + (err.message || 'تأكد من مفتاح Gemini وحاول مرة أخرى');
     chat.appendChild(errDiv);
     history.pop();
   }
